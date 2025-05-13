@@ -6,35 +6,46 @@ from starlette.routing import Mount, Route
 from mcp.server.sse import SseServerTransport
 import uvicorn
 import requests
+import json
+
+
 mcp = FastMCP("Researcher")
+
+url = "https://api.langsearch.com/v1/web-search"
 
 @mcp.tool()
 def research_tool(query: str) -> dict:
-    payload = {
-        "query": query,
-        "freshness": "noLimit",
-        "summary": True,
-        "count": 10
-    }
-
+    
+    payload = json.dumps({
+  "query": query,
+  "freshness": "noLimit",
+  "summary": True,
+  "count": 10
+})
     headers = {
-        "Authorization": "Bearer sk-9df71fa395e24559a69fcdf11026ab5d",
-        "Content-Type": "application/json"
+  'Authorization': 'Bearer sk-9df71fa395e24559a69fcdf11026ab5d',
+  'Content-Type': 'application/json'
     }
 
-    response = requests.post("https://api.langsearch.com/v1/web-search", headers=headers, json=payload)
+    response = requests.request("POST", url, headers=headers, data=payload)
     
     return response.text
 
-
 def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlette:
+    
     sse = SseServerTransport("/messages/")
 
     async def handle_sse(request: Request) -> None:
         async with sse.connect_sse(
-            request.scope, request.receive, request._send
+                request.scope,
+                request.receive,
+                request._send,
         ) as (read_stream, write_stream):
-            await mcp_server.run(read_stream, write_stream, mcp_server.create_initialization_options())
+            await mcp_server.run(
+                read_stream,
+                write_stream,
+                mcp_server.create_initialization_options(),
+            )
 
     return Starlette(
         debug=debug,
@@ -44,7 +55,13 @@ def create_starlette_app(mcp_server: Server, *, debug: bool = False) -> Starlett
         ],
     )
 
+
 if __name__ == "__main__":
     mcp_server = mcp._mcp_server
-    app = create_starlette_app(mcp_server, debug=True)
-    uvicorn.run(app, host="0.0.0.0", port=9090)
+    
+    starlette_app = create_starlette_app(mcp_server, debug=True)
+    port = 9090
+    print(f"Starting MCP server with SSE transport on port {port}...")
+    print(f"SSE endpoint available at: http://localhost:{port}/sse")
+    
+    uvicorn.run(starlette_app, host="0.0.0.0", port=port)
